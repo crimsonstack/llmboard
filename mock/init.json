@@ -1,0 +1,47 @@
+{
+  "resources": [
+    {
+      "id": "r1",
+      "name": "Moonstone",
+      "description": "A rare mineral used for crafting powerful tools"
+    },
+    {
+      "id": "r2",
+      "name": "Ironwood",
+      "description": "A dense wood prized for construction"
+    }
+  ],
+  "board": [
+    {
+      "id": "b1",
+      "name": "Crystal Cavern",
+      "description": "Mine Moonstone from the depths",
+      "capacity": 2,
+      "effect": {
+        "type": "gain",
+        "payload": { "resourceId": "r1", "amount": 2 }
+      }
+    },
+    {
+      "id": "b2",
+      "name": "Ironwood Grove",
+      "description": "Harvest Ironwood from ancient trees",
+      "capacity": 3,
+      "effect": {
+        "type": "gain",
+        "payload": { "resourceId": "r2", "amount": 1 }
+      }
+    },
+    {
+      "id": "b3",
+      "name": "Council Hall",
+      "description": "Another player chooses a resource to give you",
+      "capacity": 1,
+      "effect": {
+        "type": "interactive",
+        "payload": { "action": "chooseResourceFromPlayer" },
+        "description": "Request a resource from another player"
+      }
+    }
+  ]
+}
