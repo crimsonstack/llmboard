@@ -1,35 +1,124 @@
-import { GameState, BoardSpace, Player, Resource, PendingAction } from "../types/game";
+import { GameState, BoardSpace, Player, Resource, PendingAction, GameMode } from "../types/game";
 
-// Global store to ensure a single shared state across Next.js route bundles and during HMR in dev
-const GLOBAL_KEY = "__LLM_BOARD_GAME_STATE__";
+// Global store with per-room state to support hosting/joining multiple rooms and HMR in dev
+const GLOBAL_KEY = "__LLM_BOARD_ROOM_STORE__";
 
-type GlobalStore = { state: GameState };
+type RoomStore = {
+  rooms: Record<string, GameState>;
+  currentRoomId: string;
+  defaultRoomId: string;
+  roomList: { id: string; mode?: GameMode; createdAt: number }[];
+  subscribers: Record<string, Set<(payload: any) => void>>;
+};
 
-function getStore(): GlobalStore {
+function emptyState(): GameState {
+  return {
+    resources: [],
+    board: [],
+    players: [],
+    activePlayerId: "",
+    currentTurn: 0,
+  } as GameState;
+}
+
+function getStore(): RoomStore {
   const g = globalThis as any;
   if (!g[GLOBAL_KEY]) {
     g[GLOBAL_KEY] = {
-      state: {
-        resources: [],
-        board: [],
-        players: [],
-        activePlayerId: "",
-        currentTurn: 0,
-      } as GameState,
-    } as GlobalStore;
+      rooms: { default: emptyState() },
+      currentRoomId: "default",
+      defaultRoomId: "default",
+      roomList: [{ id: "default", createdAt: Date.now() }],
+      subscribers: {},
+    } as RoomStore;
+  } else {
+    // Backwards-compatible upgrade: ensure new fields exist after HMR
+    const s = g[GLOBAL_KEY];
+    if (!s.rooms) s.rooms = { default: emptyState() };
+    if (!s.currentRoomId) s.currentRoomId = "default";
+    if (!s.defaultRoomId) s.defaultRoomId = "default";
+    if (!s.roomList) {
+      const existingRooms = Object.keys(s.rooms || {});
+      s.roomList = existingRooms.length
+        ? existingRooms.map((id: string) => ({ id, createdAt: Date.now() }))
+        : [{ id: "default", createdAt: Date.now() }];
+    }
+    if (!s.subscribers) s.subscribers = {};
   }
-  return g[GLOBAL_KEY] as GlobalStore;
+  return g[GLOBAL_KEY] as RoomStore;
+}
+
+function ensureRoom(roomId: string) {
+  const store = getStore();
+  if (!store.rooms[roomId]) {
+    store.rooms[roomId] = emptyState();
+    if (!Array.isArray(store.roomList)) store.roomList = [];
+    if (!store.roomList.find((r: any) => r.id === roomId)) {
+      store.roomList.push({ id: roomId, createdAt: Date.now() });
+    }
+  }
+}
+
+export function setCurrentRoom(roomId: string) {
+  ensureRoom(roomId);
+  getStore().currentRoomId = roomId;
+}
+
+export async function withRoom<T>(roomId: string, fn: () => Promise<T> | T): Promise<T> {
+  const store = getStore();
+  const prev = store.currentRoomId;
+  try {
+    setCurrentRoom(roomId);
+    const result = fn();
+    return await Promise.resolve(result);
+  } finally {
+    store.currentRoomId = prev;
+  }
 }
 
 export function getGameState(): GameState {
-  return getStore().state;
+  const store = getStore();
+  ensureRoom(store.currentRoomId);
+  return store.rooms[store.currentRoomId];
+}
+
+export function getRoomState(roomId: string): GameState {
+  ensureRoom(roomId);
+  return getStore().rooms[roomId];
 }
 
 export function setGameState(newState: GameState) {
-  getStore().state = newState;
+  const store = getStore();
+  ensureRoom(store.currentRoomId);
+  store.rooms[store.currentRoomId] = newState;
+  notifyRoom(store.currentRoomId, { type: 'state', state: newState });
 }
 
-export function initGameState(resources: Resource[], board: BoardSpace[], players: Player[]) {
+export function setRoomState(roomId: string, newState: GameState) {
+  ensureRoom(roomId);
+  getStore().rooms[roomId] = newState;
+  notifyRoom(roomId, { type: 'state', state: newState });
+}
+
+export function subscribeRoom(roomId: string, cb: (payload: any) => void) {
+  const store = getStore();
+  if (!store.subscribers[roomId]) store.subscribers[roomId] = new Set();
+  store.subscribers[roomId].add(cb);
+  return () => {
+    store.subscribers[roomId].delete(cb);
+  };
+}
+
+export function notifyRoom(roomId: string, payload: any) {
+  const store = getStore();
+  const subs = store.subscribers[roomId];
+  if (!subs) return;
+  for (const cb of subs) {
+    try { cb(payload); } catch {}
+  }
+}
+
+export function initGameState(resources: Resource[], board: BoardSpace[], players: Player[], opts?: { mode?: GameMode }) {
   const normalizedPlayers = players.map((p) => ({ ...p, placedWorkers: p.placedWorkers ?? {} }));
   const next: GameState = {
     resources,
@@ -37,6 +126,7 @@ export function initGameState(resources: Resource[], board: BoardSpace[], player
     players: normalizedPlayers,
     activePlayerId: normalizedPlayers[0]?.id || "",
     currentTurn: 0,
+    ...(opts?.mode ? { mode: opts.mode } : {}),
   };
   setGameState(next);
 }
@@ -93,6 +183,28 @@ export function clearPendingAction() {
   const state = getGameState();
   delete state.pendingAction;
   setGameState(state);
+}
+
+export function setRoomMode(roomId: string, mode: GameMode) {
+  const state = getRoomState(roomId);
+  state.mode = mode;
+  setRoomState(roomId, state);
+  const store = getStore();
+  const entry = store.roomList.find(r => r.id === roomId);
+  if (entry) entry.mode = mode;
+}
+
+export function addPlayerToRoom(roomId: string, player: Player) {
+  const state = getRoomState(roomId);
+  const p: Player = { ...player, placedWorkers: player.placedWorkers ?? {} };
+  state.players.push(p);
+  if (!state.activePlayerId) state.activePlayerId = p.id;
+  setRoomState(roomId, state);
+}
+
+export function listRooms() {
+  const store = getStore();
+  return [...store.roomList].sort((a, b) => b.createdAt - a.createdAt);
 }
 
 // Effect execution is centralized in lib/effects. This legacy copy was removed to prevent divergence.

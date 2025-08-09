@@ -26,15 +26,29 @@ export default function BoardPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/game/state");
+        const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+        const roomId = params.get('roomId') || 'default';
+        const res = await fetch(`/api/game/state?roomId=${encodeURIComponent(roomId)}`);
         const payload = await res.json();
-        if (!res.ok) {
-          console.warn("Game state not available:", payload);
-          return;
-        }
-        if (!cancelled && payload && payload.ok && payload.state) setGameState(payload.state);
-      } catch (err) {
-        console.error("Failed to load game state:", err);
+        if (res.ok && payload?.state) setGameState(payload.state);
+      } catch {}
+      try {
+        const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+        const roomId = params.get('roomId') || 'default';
+        const es = new EventSource(`/api/rooms/sse?roomId=${encodeURIComponent(roomId)}`);
+        es.onmessage = (evt) => {
+          try {
+            const data = JSON.parse(evt.data);
+            if (data?.type === 'state' && data?.state) setGameState(data.state);
+          } catch {}
+        };
+        es.onerror = () => {
+          es.close();
+        };
+        if (cancelled) es.close();
+        return () => es.close();
+      } catch (e) {
+        console.warn('SSE not available', e);
       }
     })();
     return () => {
@@ -46,26 +60,22 @@ export default function BoardPage() {
     if (!gameState) return;
     setLoading(true);
     try {
+      const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+      const roomId = params.get('roomId') || 'default';
+      const playerId = params.get('playerId') || gameState.activePlayerId;
       const res = await fetch("/api/game/placeWorker", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          playerId: gameState.activePlayerId,
+          roomId,
+          playerId,
           spaceId,
         }),
       });
       const payload = await res.json();
       if (!res.ok) {
         console.error("Place worker error:", payload);
-        // Keep client in sync if server returned a valid state snapshot
-        if (
-          payload &&
-          payload.state &&
-          Array.isArray(payload.state.players) &&
-          Array.isArray(payload.state.board)
-        ) {
-          setGameState(payload.state);
-        }
+        if (payload?.state) setGameState(payload.state);
         return;
       }
       if (payload && payload.ok && payload.state) {
@@ -97,9 +107,12 @@ export default function BoardPage() {
   const isInteractive = !!pending;
   const responderId = pending?.toPlayerId || "";
   const initiatorId = pending?.fromPlayerId || "";
-  // In hotseat, the viewing identity should follow priority if present, otherwise the active player
+  // In online mode, actor identity comes from URL ?playerId=...
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const myPlayerIdParam = urlParams?.get('playerId') || '';
+  const actorPlayerId = myPlayerIdParam || currentPlayerId; // online => my id, hotseat => controlled/active
   const priorityId = gameState.priorityPlayerId || "";
-  const isResponder = isInteractive && (currentPlayerId === responderId || currentPlayerId === priorityId);
+  const isResponder = isInteractive && (actorPlayerId === responderId || actorPlayerId === priorityId);
   const responder = gameState.players.find((p) => p.id === responderId);
   const initiator = gameState.players.find((p) => p.id === initiatorId);
 
@@ -116,16 +129,18 @@ export default function BoardPage() {
   }
 
 
+  const roomId = typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('roomId') || 'default') : 'default';
   return (
     <div className="flex flex-col md:flex-row gap-4 p-4">
       <div className="flex-1">
-        <h1 className="text-2xl font-bold mb-4">Board</h1>
+        <h1 className="text-2xl font-bold mb-2">Room: {roomId}</h1>
+        <div className="text-sm text-gray-600 mb-4">You are: {(() => { const p = gameState.players.find(p => p.id === (new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('playerId') || '')); return p?.name || 'Spectator'; })()}</div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* show per-player placements */}
           {gameState.board.map((space: BoardSpace) => {
             const workersPlaced = space.currentWorkers ?? 0;
             const isFull = workersPlaced >= space.capacity;
-            const isNotTurn = currentPlayerId !== gameState.activePlayerId;
+            const isNotTurn = actorPlayerId !== gameState.activePlayerId;
             const currentPlayer = gameState.players.find((p) => p.id === currentPlayerId);
             const hasNoWorkers = !currentPlayer || currentPlayer.workers <= 0;
             return (
@@ -170,7 +185,7 @@ export default function BoardPage() {
             onClick={async () => {
               setLoading(true);
               try {
-                const res = await fetch("/api/game/nextTurn", { method: "POST" });
+                const res = await fetch("/api/game/nextTurn", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId: new URLSearchParams(window.location.search).get('roomId') || 'default' }) });
                 const payload = await res.json();
                 if (!res.ok || !payload?.ok) {
                   console.error("Next turn error:", payload);
@@ -255,6 +270,7 @@ export default function BoardPage() {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
+                              roomId: new URLSearchParams(window.location.search).get('roomId') || 'default',
                               playerId: currentPlayerId,
                               actionId: pending!.effectId,
                               choice: isSkip ? { skip: true } : { resourceId: selectedResourceId, amount: transferAmount }
@@ -355,7 +371,7 @@ export default function BoardPage() {
                 const res = await fetch("/api/game/recall", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ playerId: currentPlayerId }),
+                  body: JSON.stringify({ playerId: currentPlayerId, roomId: new URLSearchParams(window.location.search).get('roomId') || 'default' }),
                 });
                 const payload = await res.json();
                 if (!res.ok || !payload?.ok) {

@@ -26,16 +26,14 @@
 ---
 
 ## 3. UI Implementation
-- [x] Create `/start` page with:
-  - Start button to initialize game
-  - Display of resources and board spaces
+- [x] Home screen UI with mode selection (Hotseat/Online)
+  - Hotseat: Start Game button
+  - Online: Host Room, Join Room, List Rooms, join name prompt
+- [x] Board header shows Room ID and current viewer's player name
 - [x] Add **Turn Info** panel showing:
   - Current active player
   - Priority player if applicable
-- [x] Add **Player List** showing:
-  - Player name
-  - Workers remaining
-  - Resource counts
+- [x] Add **Player List** and **Resource List**
 - [x] Style UI with Tailwind/ShadCN for clean layout.
 
 ---
@@ -57,10 +55,12 @@
 
 ---
 
-## 5. Persistence & Multiplayer (Future)
+## 5. Persistence & Multiplayer
 - [ ] Swap in-memory state for persistent store (Redis, Supabase, Postgres).
-- [ ] Add WebSocket or server-sent events for real-time updates.
-- [ ] Implement player joining/leaving system.
+- [x] Add server-sent events (SSE) for real-time updates (single instance).
+- [x] Implement player joining/leaving system (basic; join via API, host auto-join).
+- [ ] Add multi-instance real-time via Redis pub/sub (or similar).
+- [ ] Persist rooms/players and add auth.
 
 ---
 

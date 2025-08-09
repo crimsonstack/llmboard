@@ -66,12 +66,13 @@ STATUS.md                  # This file
 
 ---
 
-## Next Steps
-- Implement `/board` page for gameplay. ✅
-- Add effect execution system. ✅
-- Improve API error handling. ✅
-- Replace mock data with LLM-generated content. ⏳
-- Add persistence and multiplayer support. ⏳
+## Next Steps / Current Status
+- `/board` page for gameplay — done ✅
+- Effect execution system — done ✅
+- API error handling — improved ✅
+- Replace mock data with LLM-generated content — in progress ⏳
+- Multiplayer/rooms — basic done ✅ (per-room state, join/host/list, name prompt, SSE live updates)
+- Persistence — not yet ⏳ (needs Redis/Postgres + pub/sub for multi-instance SSE)
 
 ---
 

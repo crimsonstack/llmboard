@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { placeWorkerAction } from "@/lib/gameService";
+import { withRoom } from "@/lib/gameState";
 
 export async function POST(req: Request) {
-  const { playerId, spaceId } = await req.json();
-  const result = await placeWorkerAction(playerId, spaceId);
+  const { playerId, spaceId, roomId = "default" } = await req.json();
+  const result = await withRoom(roomId, () => placeWorkerAction(playerId, spaceId));
   if (!result.ok) {
-    return NextResponse.json(result, { status: 400 });
+    return NextResponse.json({ ...result, roomId }, { status: 400 });
   }
-  return NextResponse.json(result);
+  return NextResponse.json({ ...result, roomId });
 }
