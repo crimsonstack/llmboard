@@ -18,7 +18,7 @@ function advanceToNextPlayer(state: GameState, afterPlayerId?: string) {
   if (nextIndex === 0) state.currentTurn += 1;
 }
 
-export async function placeWorkerAction(playerId: string, spaceId: string): Promise<ServiceResult> {
+export async function placeWorkerAction(playerId: string, spaceId: string, options?: { targetPlayerId?: string }): Promise<ServiceResult> {
 
   const state = getGameState();
 
@@ -97,9 +97,42 @@ export async function placeWorkerAction(playerId: string, spaceId: string): Prom
   player.placedWorkers = player.placedWorkers || {};
   player.placedWorkers[spaceId] = (player.placedWorkers[spaceId] || 0) + 1;
 
-  // Trigger effect
+  // Trigger effect (allow passing target player for interactive effects like Council Hall)
   try {
-    executeEffect(space.effect as any, playerId);
+    const effect = space.effect as any;
+    // Validation: For online interactive effects that target another player, require targetPlayerId
+    if (
+      effect?.type === "interactive" &&
+      (effect?.payload?.action === "chooseResourceFromPlayer" || effect?.payload?.type === "chooseResourceFromPlayer") &&
+      (getGameState().mode === "online")
+    ) {
+      const possibleTargets = getGameState().players.filter(p => p.id !== playerId);
+      const targetId = options?.targetPlayerId || "";
+      if (!targetId) {
+        return {
+          ok: false as const,
+          code: "MISSING_TARGET_PLAYER",
+          message: "Select a target player for this action.",
+          state: getGameState(),
+          validTargets: possibleTargets.map(p => ({ id: p.id, name: p.name })),
+        } as ServiceResult;
+      }
+      const valid = possibleTargets.some(p => p.id === targetId);
+      if (!valid) {
+        return {
+          ok: false as const,
+          code: "INVALID_TARGET_PLAYER",
+          message: `Player '${targetId}' is not a valid target for this action.`,
+          state: getGameState(),
+          validTargets: possibleTargets.map(p => ({ id: p.id, name: p.name })),
+        } as ServiceResult;
+      }
+    }
+
+    const effectToExec = options?.targetPlayerId
+      ? { ...effect, payload: { ...(effect?.payload || {}), targetPlayerId: options.targetPlayerId } }
+      : effect;
+    executeEffect(effectToExec, playerId);
   } catch (err) {
     console.error("Error executing effect:", err);
     // Continue even if effect fails to avoid losing placement

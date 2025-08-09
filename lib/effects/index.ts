@@ -81,10 +81,13 @@ function handleInteractive(state: GameState, playerId: string, payload: any) {
   };
 // Determine target player: if hotseat mode and no targetPlayerId, pick the other player
   let targetPlayerId = payload?.targetPlayerId || "";
-  if (!targetPlayerId && state.mode === "hotseat" && state.players.length > 1) {
-    const otherPlayer = state.players.find((p) => p.id !== playerId);
-    if (otherPlayer) {
-      targetPlayerId = otherPlayer.id;
+  if (!targetPlayerId) {
+    if (state.mode === "hotseat" && state.players.length > 1) {
+      const otherPlayer = state.players.find((p) => p.id !== playerId);
+      if (otherPlayer) targetPlayerId = otherPlayer.id;
+    } else if (state.mode === "online") {
+      // In online, require an explicit target for multi-player rooms
+      // If missing, we'll leave target empty and the client should prompt
     }
   }
 

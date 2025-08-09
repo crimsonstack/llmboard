@@ -21,6 +21,10 @@ export default function BoardPage() {
   const [responding, setResponding] = useState(false);
   const [selectedResourceId, setSelectedResourceId] = useState<string | "">("");
   const [transferAmount, setTransferAmount] = useState<number>(1);
+  // Target picker for interactive placements (e.g., Council Hall) in online mode
+  const [targetPickerOpen, setTargetPickerOpen] = useState(false);
+  const [targetSpaceId, setTargetSpaceId] = useState<string | null>(null);
+  const [selectedTargetId, setSelectedTargetId] = useState<string>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +60,7 @@ export default function BoardPage() {
     };
   }, []);
 
-  const placeWorker = async (spaceId: string) => {
+  const placeWorker = async (spaceId: string, targetPlayerId?: string) => {
     if (!gameState) return;
     setLoading(true);
     try {
@@ -70,6 +74,7 @@ export default function BoardPage() {
           roomId,
           playerId,
           spaceId,
+          ...(targetPlayerId ? { targetPlayerId } : {}),
         }),
       });
       const payload = await res.json();
@@ -136,6 +141,40 @@ export default function BoardPage() {
         <h1 className="text-2xl font-bold mb-2">Room: {roomId}</h1>
         <div className="text-sm text-gray-600 mb-4">You are: {(() => { const p = gameState.players.find(p => p.id === (new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('playerId') || '')); return p?.name || 'Spectator'; })()}</div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Target selection modal */}
+          {targetPickerOpen && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+              <div className="bg-white rounded shadow p-4 w-full max-w-sm">
+                <div className="font-semibold mb-2">Select target player</div>
+                <select
+                  className="border p-2 rounded w-full mb-3"
+                  value={selectedTargetId}
+                  onChange={(e) => setSelectedTargetId(e.target.value)}
+                >
+                  <option value="">-- Choose player --</option>
+                  {gameState.players.filter(p => p.id !== actorPlayerId).map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <div className="flex justify-end gap-2">
+                  <button className="px-3 py-1 border rounded" onClick={() => { setTargetPickerOpen(false); setTargetSpaceId(null); }}>Cancel</button>
+                  <button
+                    className="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+                    disabled={!selectedTargetId || !targetSpaceId}
+                    onClick={async () => {
+                      if (!targetSpaceId || !selectedTargetId) return;
+                      setTargetPickerOpen(false);
+                      await placeWorker(targetSpaceId, selectedTargetId);
+                      setTargetSpaceId(null);
+                      setSelectedTargetId("");
+                    }}
+                  >
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {/* show per-player placements */}
           {gameState.board.map((space: BoardSpace) => {
             const workersPlaced = space.currentWorkers ?? 0;
@@ -163,7 +202,16 @@ export default function BoardPage() {
                 <button
                   className="mt-2 px-3 py-1 bg-blue-500 text-white rounded disabled:opacity-50"
                   disabled={isFull || isNotTurn || hasNoWorkers || loading || isInteractive}
-                  onClick={() => placeWorker(space.id)}
+                  onClick={async () => {
+                    const effectType = (space as any)?.effect?.type;
+                    if (effectType === 'interactive' && gameState.mode === 'online') {
+                      setTargetSpaceId(space.id);
+                      setSelectedTargetId("");
+                      setTargetPickerOpen(true);
+                    } else {
+                      await placeWorker(space.id);
+                    }
+                  }}
                 >
                   Place Worker
                 </button>
