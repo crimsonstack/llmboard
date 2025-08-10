@@ -1,6 +1,6 @@
 MySQL Setup Guide for LLM Worker Placement Game
 
-This guide describes how to set up a minimal MySQL schema so game rooms and their GameState snapshots can be persisted in production. It uses a simple, safe JSON-snapshot model (fast to implement; great for LLM-generated content that changes shape). You can later migrate to a normalized schema if you need heavier querying.
+This guide describes how to set up a minimal MySQL schema so game rooms and their GameState snapshots can be persisted in production. Mechanics are resolved server-side; state includes pending interactive actions (with mechanicId) so multiple app servers can route responses correctly. It uses a simple, safe JSON-snapshot model (fast to implement; great for LLM-generated content that changes shape). You can later migrate to a normalized schema if you need heavier querying.
 
 Recommended MySQL version
 - MySQL 8.0+ (recommended) or 5.7.8+ (JSON supported).
@@ -164,7 +164,8 @@ CREATE TABLE pending_actions (
   to_player     VARCHAR(191),
   mechanic_id   VARCHAR(191) NOT NULL,
   space_id      VARCHAR(191),
-  data          JSON
+  data          JSON,
+  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 

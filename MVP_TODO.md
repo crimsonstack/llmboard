@@ -80,47 +80,33 @@
 
 ## 8. Mechanics Registry & LLM Creation API Roadmap
 
-### Phase 1: Registry foundation (no behavior changes)
-- [ ] Define `MechanicSpec` interface and registry utilities:
-  - [ ] `registerMechanic(spec)`
-  - [ ] `getMechanic(id)`
-  - [ ] `executeMechanic(id, config, ctx)` where `ctx = { playerId, spaceId, roomId? }`
-- [ ] Seed registry with current mechanics:
-  - [ ] `gain` — payload: `{ resourceId: string, amount: number }`
-  - [ ] `lose` — payload: `{ resourceId: string, amount: number }`
-  - [ ] `move` — payload: `{ fromSpaceId: string, toSpaceId: string }`
-  - [ ] `council_request` (generalized interactive request)
-- [ ] Refactor `lib/effects/index.ts` to delegate to registry (treat `effect.type` as `mechanicId`, `effect.payload` as `config`).
-- [ ] Keep `PendingAction` and `respondAction` logic as-is for now; ensure identical gameplay behavior.
-- [ ] Regression: all existing tests pass.
+### Phase 1: Registry foundation
+- [x] Define `MechanicSpec` interface with apply() returning ApplyResult and optional resolve()
+- [x] Registry utilities: `registerMechanic`, `getMechanic`, `executeMechanic`
+- [x] Seed registry with mechanics:
+  - [x] `gain` — `{ resourceId: string, amount: number }`
+  - [x] `lose` — `{ resourceId: string, amount: number }`
+  - [x] `move` — `{ fromSpaceId: string, toSpaceId: string }`
+  - [x] `interactive` — generic pending creation with permissive resolve for backward-compat
+  - [x] `chooseResourceFromPlayer` — split out into a dedicated mechanic with strict resolve
+- [x] Refactor `lib/effects/index.ts` to delegate to registry and set pendingAction on pending ApplyResult
+- [x] Route `respondAction` to `mechanic.resolve` generically
+- [x] Regression: all existing behavior covered by tests
 
 ### Phase 2: LLM discovery and creation
 - [ ] Add LLM-callable discovery function `list_mechanics()` returning:
-  - [ ] `id`, `displayName`, `description`, `payloadSchema`, `requiresResponse`
+  - [ ] `id`, `displayName`, `description`, optional schemas
 - [ ] Add creation functions with validation:
   - [ ] `create_space({ roomId, name, description, capacity, mechanicId, config })`
-    - [ ] mechanic exists, capacity >= 1, `config` matches `payloadSchema`
-    - [ ] append to `state.board` with `currentWorkers = 0`
   - [ ] `create_resource({ roomId, name, description, id? })`
-    - [ ] unique id (if provided) and unique name checks
-    - [ ] initialize players' resource maps to 0 for the new resource
-- [ ] Optional: validators and helpers
-  - [ ] `validate_space({ roomId, mechanicId, config })` to preflight configs
-  - [ ] `list_spaces({ roomId })`
-  - [ ] `list_resources({ roomId })`
-  - [ ] `update_space({ roomId, spaceId, patch })`
-  - [ ] `remove_space({ roomId, spaceId })`
+- [ ] Optional validators and helpers (validate_space, list_spaces/resources, update/remove)
 - [ ] Tests: list/creation happy path, validation errors (space + resource).
 
 ### Phase 3: Generalize interactive flow
-- [ ] Extend `PendingAction` to include:
-  - [ ] `mechanicId`, `spaceId`
-  - [ ] `responseSchema`, `prompt`, `choices[]`
-- [ ] Route `respondAction` to the mechanic’s `onRespond` instead of hard-coded logic.
-- [ ] Add optional hooks per mechanic:
-  - [ ] `validate(state, ctx)` for pre-place checks (e.g., costs)
-  - [ ] `getChoices(state, ctx)` to supply UI/LLM options
-- [ ] Tests: pending creation, choice validation, onRespond side effects.
+- [x] Extend `PendingAction` to include `mechanicId`
+- [x] Route `respondAction` to the mechanic’s `resolve`
+- [ ] Add optional hooks per mechanic: `canApply`, `getChoices`
+- [ ] Tests: pending creation, choice validation, resolve side effects.
 
 ### Phase 4: Board evolution (optional)
 - [ ] Migrate `BoardSpace.effect` to `BoardSpace.mechanicId` + `config` (keep backward compatibility during migration).
@@ -130,7 +116,7 @@
 - [ ] `gain` — `{ resourceId, amount }`
 - [ ] `lose` — `{ resourceId, amount }`
 - [ ] `move` — `{ fromSpaceId, toSpaceId }`
-- [ ] `council_request` — `{ amount?, resourceId?, targetPlayerId? }` (uses pending/priority; onRespond later moved into the mechanic)
+- [ ] `chooseResourceFromPlayer` — `{ amount, targetPlayerId? }`
 
 ### LLM Function Surface (server-side)
 - [ ] `list_mechanics()`
@@ -141,7 +127,7 @@
 - [ ] `validate_space({ roomId, mechanicId, config })`
 
 Notes
-- Validate inputs via JSON Schema (basic validator to start; AJV optional later).
+- Validate inputs via schema (zod or JSON Schema via ajv).
 - Always return updated state with structured error codes for grounding.
-- Provide `validTargets`/`choices` in errors when a mechanic requires selection.
+- Provide `validTargets`/`choices` when a mechanic requires selection.
 - Maintain stable IDs and include summaries for LLM reference.

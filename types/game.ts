@@ -4,11 +4,12 @@ export interface Resource {
   description: string;
 }
 
-export type EffectType = 'gain' | 'lose' | 'move' | 'interactive' | 'custom';
+// Effect types are open-ended strings, validated by mechanics registry
+// e.g., 'gain', 'lose', 'move', 'interactive', or any custom registered id
 
 export interface Effect {
-  type: EffectType;
-  payload: any; // Flexible for LLM creativity
+  type: string; // any registered mechanic id
+  payload: any; // Flexible for LLM creativity; validated by mechanic if provided
 }
 
 export interface BoardSpace {
@@ -33,6 +34,7 @@ export interface PendingAction {
   fromPlayerId: string;
   toPlayerId: string;
   data?: any;
+  mechanicId?: string; // for routing generic resolve
 }
 
 export type GameMode = "hotseat" | "online";

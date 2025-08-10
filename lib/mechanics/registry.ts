@@ -7,12 +7,28 @@ export interface MechanicContext {
   payload: any;
 }
 
-export interface MechanicSpec {
+export type ApplyResult =
+  | { kind: "ok" }
+  | { kind: "noop" }
+  | { kind: "pending"; pending: Pending }
+  | { kind: "error"; code: string; message: string };
+
+export interface Pending {
+  id: string; // engine may fill if blank
+  mechanicId: string;
+  fromPlayerId: string;
+  toPlayerId?: string;
+  data: any;
+}
+
+export interface MechanicSpec<P = any, R = any> {
   id: string;
   displayName?: string;
   description?: string;
-  // Mutates the provided state in-place.
-  apply: (state: GameState, ctx: MechanicContext) => void;
+  // Mutates the provided state in-place and returns an ApplyResult.
+  apply: (state: GameState, ctx: MechanicContext) => ApplyResult;
+  // Optional: Resolve an interactive step.
+  resolve?: (state: GameState, pending: Pending, choice: any) => ApplyResult;
 }
 
 const registry = new Map<string, MechanicSpec>();
@@ -29,10 +45,10 @@ export function listMechanics(): MechanicSpec[] {
   return Array.from(registry.values());
 }
 
-export function executeMechanic(state: GameState, id: string, ctx: MechanicContext) {
+export function executeMechanic(state: GameState, id: string, ctx: MechanicContext): ApplyResult {
   const mech = registry.get(id);
   if (!mech) {
     throw new Error(`Mechanic not registered: ${id}`);
   }
-  mech.apply(state, ctx);
+  return mech.apply(state, ctx);
 }

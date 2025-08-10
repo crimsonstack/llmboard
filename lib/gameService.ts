@@ -97,54 +97,26 @@ export async function placeWorkerAction(playerId: string, spaceId: string, optio
   player.placedWorkers = player.placedWorkers || {};
   player.placedWorkers[spaceId] = (player.placedWorkers[spaceId] || 0) + 1;
 
-  // Trigger effect (allow passing target player for interactive effects like Council Hall)
+  // Trigger effect (allow passing target player for interactive effects)
   try {
     const effect = space.effect as any;
-    // Validation: For online interactive effects that target another player, require targetPlayerId
-    if (
-      effect?.type === "interactive" &&
-      (effect?.payload?.action === "chooseResourceFromPlayer" || effect?.payload?.type === "chooseResourceFromPlayer") &&
-      (getGameState().mode === "online")
-    ) {
-      const possibleTargets = getGameState().players.filter(p => p.id !== playerId);
-      const targetId = options?.targetPlayerId || "";
-      if (!targetId) {
-        return {
-          ok: false as const,
-          code: "MISSING_TARGET_PLAYER",
-          message: "Select a target player for this action.",
-          state: getGameState(),
-          validTargets: possibleTargets.map(p => ({ id: p.id, name: p.name })),
-        } as ServiceResult;
-      }
-      const valid = possibleTargets.some(p => p.id === targetId);
-      if (!valid) {
-        return {
-          ok: false as const,
-          code: "INVALID_TARGET_PLAYER",
-          message: `Player '${targetId}' is not a valid target for this action.`,
-          state: getGameState(),
-          validTargets: possibleTargets.map(p => ({ id: p.id, name: p.name })),
-        } as ServiceResult;
-      }
-    }
-
     const effectToExec = options?.targetPlayerId
       ? { ...effect, payload: { ...(effect?.payload || {}), targetPlayerId: options.targetPlayerId } }
       : effect;
-    executeEffect(effectToExec, playerId);
+    const res = executeEffect(effectToExec, playerId);
+    if (!res || res.kind === "ok" || res.kind === "noop") {
+      // Advance to next player if no pending
+      if (!getGameState().pendingAction) {
+        advanceToNextPlayer(state, playerId);
+      }
+    } else if (res.kind === "pending") {
+      // Do not advance; pending action set inside executeEffect
+    } else if (res.kind === "error") {
+      // Keep placement but don't advance automatically
+    }
   } catch (err) {
     console.error("Error executing effect:", err);
     // Continue even if effect fails to avoid losing placement
-  }
-
-  // If the effect created any pendingAction, do NOT advance or switch active player.
-  // Turn advances only after response in respondAction.
-  if (state.pendingAction) {
-    // Keep activePlayerId as-is; responder sees UI due to priority (if set)
-  } else {
-    // No pending action was created, the effect resolved immediately -> advance to next player
-    advanceToNextPlayer(state, playerId);
   }
 
   setGameState(state as GameState);
@@ -207,6 +179,8 @@ export async function recallWorkersAction(playerId: string): Promise<ServiceResu
   return { ok: true, state };
 }
 
+import { getMechanic } from "@/lib/mechanics";
+
 export async function respondAction(playerId: string, actionId: string, choice: any): Promise<ServiceResult> {
 
 
@@ -219,9 +193,11 @@ export async function respondAction(playerId: string, actionId: string, choice: 
   }
 
   console.log(`Player ${playerId} responded to action ${actionId} with choice:`, choice);
-  const { fromPlayerId, toPlayerId, data } = state.pendingAction;
-  if (choice?.skip) {
-    // Responder cannot or chooses not to provide resources
+  const { fromPlayerId, toPlayerId, data, mechanicId } = state.pendingAction as any;
+  const mechId = mechanicId || data?.mechanicId || data?.type;
+  const mech = mechId ? getMechanic(mechId) : undefined;
+  if (!mech || !mech.resolve) {
+    // fallback: clear and advance
     state.pendingAction = undefined;
     delete state.priorityPlayerId;
     advanceToNextPlayer(state, fromPlayerId);
@@ -229,30 +205,31 @@ export async function respondAction(playerId: string, actionId: string, choice: 
     return { ok: true, state };
   }
 
-  if (data?.type === "chooseResourceFromPlayer" || data?.type === "interactive") {
-    const responder = state.players.find((p) => p.id === toPlayerId); // giver
-    const initiator = state.players.find((p) => p.id === fromPlayerId); // receiver
-    if (responder && initiator && choice?.resourceId) {
-      const requiredAmount = (data?.amount != null ? data.amount : (choice.amount || 1));
-      const available = responder.resources[choice.resourceId] || 0;
-      if (available < requiredAmount) {
-        return {
-          ok: false,
-          code: "INSUFFICIENT_RESOURCES",
-          message: `Player '${responder.name}' has only ${available} of '${choice.resourceId}', but ${requiredAmount} is required.`,
-          state,
-          details: { requiredAmount, available, resourceId: choice.resourceId, responderId: responder.id },
-        };
-      }
-      responder.resources[choice.resourceId] = available - requiredAmount;
-      initiator.resources[choice.resourceId] = (initiator.resources[choice.resourceId] || 0) + requiredAmount;
-    }
+  const res = mech.resolve(state as GameState, {
+    id: state.pendingAction.effectId,
+    mechanicId: mechId,
+    fromPlayerId,
+    toPlayerId: toPlayerId || playerId,
+    data,
+  } as any, choice);
+
+  if (res.kind === "pending") {
+    // still pending; keep as is
+    setGameState(state as GameState);
+    return { ok: true, state };
   }
 
+  // Clear pending on non-pending results
   state.pendingAction = undefined;
-  // Clear priority on resolve and advance to next player from the initiator
   delete state.priorityPlayerId;
-  advanceToNextPlayer(state, fromPlayerId);
+
+  if (res.kind === "ok" || res.kind === "noop") {
+    advanceToNextPlayer(state, fromPlayerId);
+    setGameState(state as GameState);
+    return { ok: true, state };
+  }
+
+  // error case
   setGameState(state as GameState);
-  return { ok: true, state };
+  return { ok: false, code: (res as any).code || "RESOLVE_ERROR", message: (res as any).message || "Resolve failed", state };
 }

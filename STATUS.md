@@ -71,7 +71,9 @@ STATUS.md                  # This file
 
 ## Next Steps / Current Status
 - `/board` page for gameplay — done ✅
-- Effect execution system — done ✅
+- Mechanics registry with ApplyResult and generic interactive resolve — done ✅
+- Domain helpers for selectors/mutators — done ✅
+- Effect execution routed through registry — done ✅
 - API error handling — improved ✅
 - Replace mock data with LLM-generated content — in progress ⏳
 - Multiplayer/rooms — basic done ✅ (per-room state, join/host/list, name prompt, SSE live updates)
@@ -92,8 +94,10 @@ STATUS.md                  # This file
 - Prepared for LLM integration by ensuring `lib/llm.ts` and `/api/llm/init` can swap mock data for generated content without breaking type safety.
 
 ## 2025-08-10 Updates
-- Mechanics registry introduced and effect execution refactored to registry ✅
-- Added LLM helper functions (list mechanics, create resource) ✅
+- Mechanics registry introduced with ApplyResult and effect execution refactor ✅
+- Generic respondAction routed to mechanic.resolve; interactive logic moved out of gameService ✅
+- Domain helpers added (selectors/mutators) and mechanics refactored to use them ✅
+- chooseResourceFromPlayer split out as a separate mechanic with tests ✅
 - MySQL store (Prisma) added with optimistic concurrency and retries ✅
 - InMemoryStore silenced for dev/tests (no recursive persistence) ✅
 - DB.md added with MySQL setup guide ✅
@@ -103,8 +107,7 @@ STATUS.md                  # This file
 - Introduced a global game state store on `globalThis` to ensure consistent state across API routes during dev/HMR.
 - Implemented per-player worker placement tracking (`placedWorkers`), surfaced in UI (per-space and per-player summary).
 - Added Recall Workers action and API, with confirmation dialog, that returns workers and counts as a turn (unless none to recall).
-- Council Hall interactive flow now passes priority to responder without switching turn; turn advances only after response.
+- Interactive flow passes priority to responder without switching turn; turn advances only after response.
 - Server guardrails: block place/next/recall while a pending interactive action exists (`PENDING_ACTION`).
 - Client UI disables Place/Next/Recall during pending and auto-switches view to priority (hotseat) while Turn Info shows the true turn owner.
-- Council Hall resource selection: filter to only affordable resources, add "No resources - Skip" option; server validates and supports skip.
-- New tests covering interactive flow, pending-action blocking, recall behavior, and turn/priority correctness. All tests green (6/6).
+- New tests for interactive flow, pending-action blocking, recall behavior, turn/priority correctness, and mechanic-level unit tests. All tests green.
