@@ -387,6 +387,33 @@ export default function BoardPage() {
                     ))}
                   </select>
                 )}
+                <div className="pt-4 border-t">
+                  <div className="font-semibold mb-1">Save Setup</div>
+                  <button
+                    className="px-3 py-1 bg-green-600 text-white rounded disabled:opacity-50"
+                    onClick={async () => {
+                      const name = prompt("Name this setup template:", "My Setup");
+                      if (!name) return;
+                      try {
+                        const res = await fetch("/api/setup/save", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ roomId, name }),
+                        });
+                        const payload = await res.json();
+                        if (!res.ok || !payload?.ok) {
+                          alert("Failed to save setup: " + (payload?.message || ""));
+                          return;
+                        }
+                        alert(`Saved setup '${payload.setup.name}' (id: ${payload.setup.id})`);
+                      } catch (e) {
+                        alert("Network error saving setup");
+                      }
+                    }}
+                  >
+                    Save Current Setup
+                  </button>
+                </div>
               </div>
             </SheetContent>
           </Sheet>

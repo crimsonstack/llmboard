@@ -15,7 +15,7 @@ export type StoreSave = SaveResult | SaveConflict;
 
 export interface GameStore {
   get(roomId: string): Promise<{ state: GameState | null; version: number | null }>;
-  init(roomId: string, state: GameState): Promise<StoreSave>;
+  init(roomId: string, state: GameState, meta?: { setupId?: string }): Promise<StoreSave>;
   set(roomId: string, state: GameState, expectedVersion: number | null): Promise<StoreSave>;
   listRooms(): Promise<{ id: string; createdAt: number }[]>;
 }

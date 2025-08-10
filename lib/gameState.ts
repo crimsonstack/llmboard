@@ -152,7 +152,7 @@ export function notifyRoom(roomId: string, payload: any) {
   }
 }
 
-export async function initGameState(resources: Resource[], board: BoardSpace[], players: Player[], opts?: { mode?: GameMode; roomId?: string }) {
+export async function initGameState(resources: Resource[], board: BoardSpace[], players: Player[], opts?: { mode?: GameMode; roomId?: string; setupId?: string }) {
   const normalizedPlayers = players.map((p) => ({ ...p, placedWorkers: p.placedWorkers ?? {} }));
   const next: GameState = {
     resources,
@@ -165,7 +165,7 @@ export async function initGameState(resources: Resource[], board: BoardSpace[], 
   const roomId = opts?.roomId || getStore().currentRoomId;
   const selected = getSelectedStore();
   // Initialize in store first (sets version=1 in persistent stores)
-  await selected.init(roomId, next);
+  await selected.init(roomId, next, { setupId: opts?.setupId });
   setRoomState(roomId, next);
 }
 

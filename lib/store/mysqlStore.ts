@@ -18,11 +18,11 @@ export const MySQLStore: GameStore = {
     if (!row) return { state: null, version: null };
     return { state: row.state as unknown as GameState, version: row.version };
   },
-  async init(roomId, state) {
+  async init(roomId, state, meta) {
     if (!prisma) return { ok: true, version: 1 };
     try {
       await prisma.room.upsert({ where: { id: roomId }, create: { id: roomId }, update: {} });
-      const created = await prisma.gameState.create({ data: { roomId, state: state as unknown as any, version: 1 } });
+      const created = await prisma.gameState.create({ data: { roomId, state: state as unknown as any, version: 1, setupId: meta?.setupId || null } });
       return { ok: true, version: created.version };
     } catch (e: any) {
       return { ok: false, code: "DB_ERROR", message: e?.message || "DB error" };
