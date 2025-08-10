@@ -75,3 +75,73 @@
 - [ ] Improve error messages and user feedback in UI.
 - [ ] Add animations for worker placement and resource changes.
 - [ ] Make UI responsive for mobile devices.
+
+---
+
+## 8. Mechanics Registry & LLM Creation API Roadmap
+
+### Phase 1: Registry foundation (no behavior changes)
+- [ ] Define `MechanicSpec` interface and registry utilities:
+  - [ ] `registerMechanic(spec)`
+  - [ ] `getMechanic(id)`
+  - [ ] `executeMechanic(id, config, ctx)` where `ctx = { playerId, spaceId, roomId? }`
+- [ ] Seed registry with current mechanics:
+  - [ ] `gain` — payload: `{ resourceId: string, amount: number }`
+  - [ ] `lose` — payload: `{ resourceId: string, amount: number }`
+  - [ ] `move` — payload: `{ fromSpaceId: string, toSpaceId: string }`
+  - [ ] `council_request` (generalized interactive request)
+- [ ] Refactor `lib/effects/index.ts` to delegate to registry (treat `effect.type` as `mechanicId`, `effect.payload` as `config`).
+- [ ] Keep `PendingAction` and `respondAction` logic as-is for now; ensure identical gameplay behavior.
+- [ ] Regression: all existing tests pass.
+
+### Phase 2: LLM discovery and creation
+- [ ] Add LLM-callable discovery function `list_mechanics()` returning:
+  - [ ] `id`, `displayName`, `description`, `payloadSchema`, `requiresResponse`
+- [ ] Add creation functions with validation:
+  - [ ] `create_space({ roomId, name, description, capacity, mechanicId, config })`
+    - [ ] mechanic exists, capacity >= 1, `config` matches `payloadSchema`
+    - [ ] append to `state.board` with `currentWorkers = 0`
+  - [ ] `create_resource({ roomId, name, description, id? })`
+    - [ ] unique id (if provided) and unique name checks
+    - [ ] initialize players' resource maps to 0 for the new resource
+- [ ] Optional: validators and helpers
+  - [ ] `validate_space({ roomId, mechanicId, config })` to preflight configs
+  - [ ] `list_spaces({ roomId })`
+  - [ ] `list_resources({ roomId })`
+  - [ ] `update_space({ roomId, spaceId, patch })`
+  - [ ] `remove_space({ roomId, spaceId })`
+- [ ] Tests: list/creation happy path, validation errors (space + resource).
+
+### Phase 3: Generalize interactive flow
+- [ ] Extend `PendingAction` to include:
+  - [ ] `mechanicId`, `spaceId`
+  - [ ] `responseSchema`, `prompt`, `choices[]`
+- [ ] Route `respondAction` to the mechanic’s `onRespond` instead of hard-coded logic.
+- [ ] Add optional hooks per mechanic:
+  - [ ] `validate(state, ctx)` for pre-place checks (e.g., costs)
+  - [ ] `getChoices(state, ctx)` to supply UI/LLM options
+- [ ] Tests: pending creation, choice validation, onRespond side effects.
+
+### Phase 4: Board evolution (optional)
+- [ ] Migrate `BoardSpace.effect` to `BoardSpace.mechanicId` + `config` (keep backward compatibility during migration).
+- [ ] Prepare structure for future triggers (`onPlace` only for now; later `onRespond`, `onTurnStart`, `onRecall`).
+
+### Initial Mechanic Templates (LLM-friendly)
+- [ ] `gain` — `{ resourceId, amount }`
+- [ ] `lose` — `{ resourceId, amount }`
+- [ ] `move` — `{ fromSpaceId, toSpaceId }`
+- [ ] `council_request` — `{ amount?, resourceId?, targetPlayerId? }` (uses pending/priority; onRespond later moved into the mechanic)
+
+### LLM Function Surface (server-side)
+- [ ] `list_mechanics()`
+- [ ] `create_space({ roomId, name, description, capacity, mechanicId, config, id? })`
+- [ ] `update_space({ roomId, spaceId, patch })`
+- [ ] `remove_space({ roomId, spaceId })`
+- [ ] `list_spaces({ roomId })`
+- [ ] `validate_space({ roomId, mechanicId, config })`
+
+Notes
+- Validate inputs via JSON Schema (basic validator to start; AJV optional later).
+- Always return updated state with structured error codes for grounding.
+- Provide `validTargets`/`choices` in errors when a mechanic requires selection.
+- Maintain stable IDs and include summaries for LLM reference.
