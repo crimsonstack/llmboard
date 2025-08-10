@@ -22,8 +22,19 @@ model GameState {
   roomId    String   @id @db.VarChar(191) @map("room_id")
   state     Json     @db.Json
   version   Int
+  setupId   String?  @db.VarChar(191) @map("setup_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("game_states")
+}
+
+model GameSetup {
+  id          String   @id @db.VarChar(191)
+  name        String   @db.VarChar(191)
+  description String?  @db.Text
+  data        Json     @db.Json
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("game_setups")
 }
