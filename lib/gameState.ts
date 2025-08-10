@@ -5,6 +5,7 @@ const GLOBAL_KEY = "__LLM_BOARD_ROOM_STORE__";
 
 type RoomStore = {
   rooms: Record<string, GameState>;
+  versions: Record<string, number | undefined>;
   currentRoomId: string;
   defaultRoomId: string;
   roomList: { id: string; mode?: GameMode; createdAt: number }[];
@@ -26,6 +27,7 @@ function getStore(): RoomStore {
   if (!g[GLOBAL_KEY]) {
     g[GLOBAL_KEY] = {
       rooms: { default: emptyState() },
+      versions: { default: 1 },
       currentRoomId: "default",
       defaultRoomId: "default",
       roomList: [{ id: "default", createdAt: Date.now() }],
@@ -35,6 +37,7 @@ function getStore(): RoomStore {
     // Backwards-compatible upgrade: ensure new fields exist after HMR
     const s = g[GLOBAL_KEY];
     if (!s.rooms) s.rooms = { default: emptyState() };
+    if (!s.versions) s.versions = { default: 1 };
     if (!s.currentRoomId) s.currentRoomId = "default";
     if (!s.defaultRoomId) s.defaultRoomId = "default";
     if (!s.roomList) {
@@ -48,10 +51,14 @@ function getStore(): RoomStore {
   return g[GLOBAL_KEY] as RoomStore;
 }
 
+// Selected persistence store (in-memory by default, MySQL in prod)
+import { getStore as getSelectedStore } from "@/lib/store";
+
 function ensureRoom(roomId: string) {
   const store = getStore();
   if (!store.rooms[roomId]) {
     store.rooms[roomId] = emptyState();
+    store.versions[roomId] = 1;
     if (!Array.isArray(store.roomList)) store.roomList = [];
     if (!store.roomList.find((r: any) => r.id === roomId)) {
       store.roomList.push({ id: roomId, createdAt: Date.now() });
@@ -82,6 +89,12 @@ export function getGameState(): GameState {
   return store.rooms[store.currentRoomId];
 }
 
+// Helper to get local version for optimistic save
+function getCurrentVersion(roomId: string) {
+  const store = getStore();
+  return store.versions[roomId] ?? 1;
+}
+
 export function getRoomState(roomId: string): GameState {
   ensureRoom(roomId);
   return getStore().rooms[roomId];
@@ -90,13 +103,34 @@ export function getRoomState(roomId: string): GameState {
 export function setGameState(newState: GameState) {
   const store = getStore();
   ensureRoom(store.currentRoomId);
-  store.rooms[store.currentRoomId] = newState;
-  notifyRoom(store.currentRoomId, { type: 'state', state: newState });
+  const roomId = store.currentRoomId;
+  store.rooms[roomId] = newState;
+  // Persist via selected store (optimistic with local version)
+  const selected = getSelectedStore();
+  const expected = store.versions[roomId] ?? 1;
+  selected.set(roomId, newState, expected).then((res) => {
+    if (res.ok) {
+      store.versions[roomId] = res.version;
+    } else {
+      console.warn("Persistence save failed:", res.code, res.message);
+    }
+  }).catch((e) => console.error("Persistence error:", e));
+  notifyRoom(roomId, { type: 'state', state: newState });
 }
 
 export function setRoomState(roomId: string, newState: GameState) {
   ensureRoom(roomId);
-  getStore().rooms[roomId] = newState;
+  const store = getStore();
+  store.rooms[roomId] = newState;
+  const selected = getSelectedStore();
+  const expected = store.versions[roomId] ?? 1;
+  selected.set(roomId, newState, expected).then((res) => {
+    if (res.ok) {
+      store.versions[roomId] = res.version;
+    } else {
+      console.warn("Persistence save failed:", res.code, res.message);
+    }
+  }).catch((e) => console.error("Persistence error:", e));
   notifyRoom(roomId, { type: 'state', state: newState });
 }
 
@@ -118,7 +152,7 @@ export function notifyRoom(roomId: string, payload: any) {
   }
 }
 
-export function initGameState(resources: Resource[], board: BoardSpace[], players: Player[], opts?: { mode?: GameMode }) {
+export async function initGameState(resources: Resource[], board: BoardSpace[], players: Player[], opts?: { mode?: GameMode; roomId?: string }) {
   const normalizedPlayers = players.map((p) => ({ ...p, placedWorkers: p.placedWorkers ?? {} }));
   const next: GameState = {
     resources,
@@ -128,7 +162,11 @@ export function initGameState(resources: Resource[], board: BoardSpace[], player
     currentTurn: 0,
     ...(opts?.mode ? { mode: opts.mode } : {}),
   };
-  setGameState(next);
+  const roomId = opts?.roomId || getStore().currentRoomId;
+  const selected = getSelectedStore();
+  // Initialize in store first (sets version=1 in persistent stores)
+  await selected.init(roomId, next);
+  setRoomState(roomId, next);
 }
 
 export function placeWorker(playerId: string, spaceId: string): boolean {
