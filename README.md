@@ -10,6 +10,9 @@ Features
 - Name prompt when joining without a name
 - Live updates via SSE (turn changes, placements, etc.)
 - Interactive effects supported in-game (priority/turn separation)
+- Mechanics registry for modular effects (gain/lose/move/interactive)
+- Save reusable setup templates (resources + board) and host from a saved setup
+- MySQL persistence (JSON snapshot) with Prisma, enabled in prod via env
 
 Getting Started
 1) Install and run dev server
@@ -33,7 +36,7 @@ How to Play
   - All clients receive updates live via SSE when someone makes a move or the turn advances.
 
 API Overview
-- POST /api/llm/init — Initialize a room. Body: { roomId?: string, mode?: "hotseat" | "online", players?: Partial<Player>[] }
+- POST /api/llm/init — Initialize a room. Body: { roomId?: string, mode?: "hotseat" | "online", players?: Partial<Player>[], setupId?: string }
 - GET /api/game/state?roomId=ROOM — Get room state
 - POST /api/rooms/join — Join a room. Body: { roomId: string, name?: string }
 - GET /api/rooms/list — List active rooms
@@ -44,14 +47,15 @@ API Overview
 - POST /api/game/recall — Recall workers. Body: { roomId, playerId }
 
 Notes & Limitations
-- In-memory store only: game state is kept in-process. For production, swap to a shared store (Redis/Postgres) and add pub/sub for SSE across instances.
+- Dev uses in-memory state; production enables MySQL persistence via env. For multi-instance SSE, add Redis pub/sub.
 - Dev HMR: If you see odd behavior after code changes, stop/restart the dev server to reset the in-memory store.
 - SSE assumes a single server instance. For multi-instance hosting, use Redis pub/sub (or similar) to broadcast updates.
 
 Project Structure
 - app/ — Next.js routes and UI
-- app/api — API routes for game/rooms
-- lib/ — Game state, effects, utilities
+- app/api — API routes for game/rooms and setups
+- lib/ — Game state, mechanics registry, effects, utilities, setup helpers, and stores
+- prisma/ — Prisma schema for MySQL persistence
 - types/ — Shared TypeScript types
 - mock/ — Local mock data for initial board/resources
 - tests/ — Unit tests for core services

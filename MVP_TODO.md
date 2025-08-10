@@ -56,7 +56,7 @@
 ---
 
 ## 5. Persistence & Multiplayer
-- [ ] Swap in-memory state for persistent store (Redis, Supabase, Postgres).
+- [x] MySQL JSON snapshot persistence in prod (Prisma); InMemory in dev; add Redis pub/sub for multi-instance SSE ⏳
 - [x] Add server-sent events (SSE) for real-time updates (single instance).
 - [x] Implement player joining/leaving system (basic; join via API, host auto-join).
 - [ ] Add multi-instance real-time via Redis pub/sub (or similar).

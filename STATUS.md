@@ -19,8 +19,11 @@ The game world (resources, board spaces, effects, capacities) is generated at th
   /ResourceList/ResourceList.tsx # Lists resources with descriptions
   /BoardList/BoardList.tsx # Displays board spaces with capacity
 /lib
-  gameState.ts             # In-memory game state management
-  llm.ts                   # Loads mock data or calls LLM
+gameState.ts             # In-memory + pluggable store (MySQL in prod)
+llm.ts                   # Loads mock data or calls LLM
+setup.ts                 # Helpers to save and hydrate setup templates
+/mechanics               # Registry and built-in mechanics
+/store                   # In-memory/MySQL stores + setup store
 /mock
   init.json                # Example game data for local testing
 /types
@@ -72,7 +75,7 @@ STATUS.md                  # This file
 - API error handling — improved ✅
 - Replace mock data with LLM-generated content — in progress ⏳
 - Multiplayer/rooms — basic done ✅ (per-room state, join/host/list, name prompt, SSE live updates)
-- Persistence — not yet ⏳ (needs Redis/Postgres + pub/sub for multi-instance SSE)
+- Persistence — MySQL JSON snapshot in prod ✅ (Prisma). For multi-instance SSE, add Redis pub/sub ⏳
 
 ---
 
@@ -89,6 +92,14 @@ STATUS.md                  # This file
 - Prepared for LLM integration by ensuring `lib/llm.ts` and `/api/llm/init` can swap mock data for generated content without breaking type safety.
 
 ## 2025-08-10 Updates
+- Mechanics registry introduced and effect execution refactored to registry ✅
+- Added LLM helper functions (list mechanics, create resource) ✅
+- MySQL store (Prisma) added with optimistic concurrency and retries ✅
+- InMemoryStore silenced for dev/tests (no recursive persistence) ✅
+- DB.md added with MySQL setup guide ✅
+- Setup templates: save/list APIs, UI button to save current setup in Debug panel ✅
+- Host From Setup option added (online): initialize room from saved setup ✅
+
 - Introduced a global game state store on `globalThis` to ensure consistent state across API routes during dev/HMR.
 - Implemented per-player worker placement tracking (`placedWorkers`), surfaced in UI (per-space and per-player summary).
 - Added Recall Workers action and API, with confirmation dialog, that returns workers and counts as a turn (unless none to recall).

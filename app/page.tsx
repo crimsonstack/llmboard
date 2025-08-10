@@ -61,6 +61,46 @@ export default function Home() {
             )}
           </div>
           <div className="flex gap-2 items-center">
+            {mode === "online" && (
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/setup/list');
+                    const payload = await res.json();
+                    if (!payload?.ok) {
+                      alert('Failed to fetch setups');
+                      return;
+                    }
+                    const options = (payload.setups || []).map((s: any) => `${s.id} :: ${s.name}`);
+                    const chosen = prompt(`Enter setupId to use:\n${options.join('\n')}`);
+                    if (!chosen) return;
+                    const setupId = chosen.split('::')[0].trim();
+                    const rid = roomId || `room-${Math.random().toString(36).slice(2, 8)}`;
+                    const initRes = await fetch('/api/llm/init', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ mode, roomId: rid, setupId })
+                    });
+                    const initPayload = await initRes.json();
+                    if (!initRes.ok || !initPayload?.ok) {
+                      alert('Failed to init from setup');
+                      return;
+                    }
+                    setRoomId(rid);
+                    if (typeof window !== 'undefined') {
+                      const url = new URL(window.location.href);
+                      url.searchParams.set('roomId', rid);
+                      window.history.pushState({}, "", url.toString());
+                    }
+                    setStarted(true);
+                  } catch (e) {
+                    alert('Error initializing from setup');
+                  }
+                }}
+                className="px-4 py-2 border rounded"
+              >
+                Host From Setup
+              </button>
+            )}
             {mode === "hotseat" ? (
               <button
                 onClick={async () => {

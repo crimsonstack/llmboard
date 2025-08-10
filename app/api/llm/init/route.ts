@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { loadInitialGameData } from "@/lib/llm";
 import { initGameState, withRoom, setRoomMode, getGameState } from "@/lib/gameState";
+import { getSetup } from "@/lib/store/setupStore";
 import type { GameMode, Player } from "@/types/game";
 
 function genId(prefix: string) {
@@ -13,7 +14,7 @@ function genId(prefix: string) {
 
 /**
  * Initializes the game state for a given room.
- * Body: { roomId?: string, mode?: GameMode, players?: Partial<Player>[] }
+ * Body: { roomId?: string, mode?: GameMode, players?: Partial<Player>[], setupId?: string }
  */
 export async function POST(req: Request) {
   try {
@@ -22,7 +23,22 @@ export async function POST(req: Request) {
     const roomId: string = body?.roomId || "default";
     const playersInput: Partial<Player>[] | undefined = body?.players;
 
-    const { resources, board } = await loadInitialGameData();
+    const setupId: string | undefined = body?.setupId;
+
+    let resources: any[] = [];
+    let board: any[] = [];
+    if (setupId) {
+      const setup = await getSetup(setupId);
+      if (!setup) {
+        return NextResponse.json({ ok: false, code: "SETUP_NOT_FOUND", message: `No setup '${setupId}'` }, { status: 400 });
+      }
+      resources = (setup.data as any)?.resources || [];
+      board = (setup.data as any)?.board || [];
+    } else {
+      const data = await loadInitialGameData();
+      resources = data.resources;
+      board = data.board;
+    }
 
     const players: Player[] = (playersInput && playersInput.length > 0)
       ? playersInput.map((p, idx) => ({
@@ -40,7 +56,7 @@ export async function POST(req: Request) {
         : []);
 
     await withRoom(roomId, () => {
-      initGameState(resources, board, players, { mode: mode || "hotseat" });
+      initGameState(resources, board, players, { mode: mode || "hotseat", setupId });
       if (mode) setRoomMode(roomId, mode);
     });
 
