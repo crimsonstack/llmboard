@@ -1,31 +1,25 @@
-import type { GameState } from "@/types/game";
-import type { GameStore, StoreSave } from "./GameStore";
-import { getRoomState, setRoomState, listRooms as listLocalRooms } from "@/lib/gameState";
+import type { GameStore } from "./GameStore";
 
+// Lightweight dev-only store: tracks versions only and never writes back into gameState
 const versions = new Map<string, number>();
 
 export const InMemoryStore: GameStore = {
   async get(roomId) {
-    const state = getRoomState(roomId) as GameState | null;
     const version = versions.get(roomId) ?? 1;
-    return { state, version };
+    return { state: null, version };
   },
-  async init(roomId, state) {
-    setRoomState(roomId, state);
+  async init(roomId) {
     versions.set(roomId, 1);
     return { ok: true, version: 1 };
   },
-  async set(roomId, state, expectedVersion) {
+  async set(roomId, _state, _expectedVersion) {
     const current = versions.get(roomId) ?? 1;
-    if (expectedVersion != null && expectedVersion !== current) {
-      return { ok: false, code: "VERSION_CONFLICT", message: `expected ${expectedVersion}, current ${current}` };
-    }
     const next = current + 1;
-    setRoomState(roomId, state);
     versions.set(roomId, next);
     return { ok: true, version: next };
   },
   async listRooms() {
-    return listLocalRooms().map(r => ({ id: r.id, createdAt: r.createdAt }));
-  }
+    // Not used in dev; return empty list
+    return [];
+  },
 };
