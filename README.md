@@ -12,7 +12,7 @@ Features
 - Mechanics registry with clear ApplyResult contract (ok | noop | pending | error)
 - Generic interactive flow: mechanics can return pending and provide a resolve() to finish
 - Domain helpers for concise mechanics (selectors and mutators)
-- Built-in mechanics: gain, lose, move, interactive, chooseResourceFromPlayer
+- Built-in mechanics: gain, lose, move, interactive, chooseResourceFromPlayer, convert, chooseGainResource, harvestByPresence
 - Save reusable setup templates (resources + board) and host from a saved setup
 - MySQL persistence (JSON snapshot) with Prisma, enabled in prod via env
 
@@ -74,7 +74,7 @@ Mechanics Authoring Guide
   - `{ kind: "error", code, message }` — validation or runtime failure
 - For interactive mechanics, return `pending` with `mechanicId` and any data the UI needs (e.g., amount, prompt, allowed resourceIds). The game service will call your `resolve` when the responder submits a choice.
 
-Minimal example
+Minimal example (gain)
 ```ts
 // lib/mechanics/myGain.ts (or add to builtin list)
 import type { MechanicSpec } from "./registry";
@@ -96,40 +96,52 @@ export const myGain: MechanicSpec = {
 };
 ```
 
-Interactive example (apply + resolve)
+Interactive example (apply + resolve): chooseGainResource
 ```ts
 import type { MechanicSpec, Pending } from "./registry";
 import { getPlayerById } from "@/lib/domain/selectors";
 import { transferResource } from "@/lib/domain/mutators";
 
-export const takeFromOpponent: MechanicSpec = {
-  id: "takeFromOpponent",
-  displayName: "Take Resource",
-  description: "Target player gives you N of a chosen resource",
+export const chooseGainResource: MechanicSpec = {
+  id: "chooseGainResource",
+  displayName: "Choose Gain Resource",
+  description: "Gain N of a resource of your choice (optionally restricted).",
   apply(state, { playerId, payload }) {
-    const amount = payload?.amount ?? 1;
-    const targetPlayerId = payload?.targetPlayerId; // optional: UI can ask later
+    const player = getPlayerById(state, playerId);
+    const amount = Number(payload?.amount ?? 1);
+    const allowed = Array.isArray(payload?.allowedResourceIds) ? payload.allowedResourceIds : undefined;
+    if (!player) return { kind: "error", code: "PLAYER_NOT_FOUND", message: "Player not found" };
+    if (!(amount > 0)) return { kind: "error", code: "INVALID_AMOUNT", message: "amount must be > 0" };
+    const catalogIds = state.resources.map(r => r.id);
+    const whitelist = allowed && allowed.length ? allowed.filter((id) => catalogIds.includes(id)) : undefined;
+    if (whitelist && whitelist.length === 1) {
+      grantResource(player, whitelist[0], amount);
+      return { kind: "ok" };
+    }
     return {
       kind: "pending",
       pending: {
         id: "",
-        mechanicId: "takeFromOpponent",
+        mechanicId: "chooseGainResource",
         fromPlayerId: playerId,
-        toPlayerId: targetPlayerId,
-        data: { amount },
+        toPlayerId: playerId,
+        data: { amount, allowedResourceIds: whitelist },
       },
     };
   },
   resolve(state, pending, choice) {
     if (choice?.skip) return { kind: "ok" };
-    const giver = getPlayerById(state, pending.toPlayerId || "");
-    const taker = getPlayerById(state, pending.fromPlayerId);
-    if (!giver || !taker) return { kind: "error", code: "PLAYER_NOT_FOUND", message: "Players not found" };
-    const amount = pending.data?.amount ?? choice?.amount ?? 1;
+    const player = getPlayerById(state, pending.fromPlayerId);
+    const amount = Number(pending.data?.amount ?? choice?.amount ?? 1);
     const resourceId = choice?.resourceId;
+    const allowed: string[] | undefined = pending.data?.allowedResourceIds;
+    if (!player) return { kind: "error", code: "PLAYER_NOT_FOUND", message: "Player not found" };
     if (!resourceId) return { kind: "error", code: "INVALID_CHOICE", message: "resourceId required" };
-    const tr = transferResource(giver, taker, resourceId, amount);
-    if (!tr.ok) return { kind: "error", code: tr.code, message: tr.message };
+    if (allowed && allowed.length && !allowed.includes(resourceId)) return { kind: "error", code: "RESOURCE_NOT_ALLOWED", message: "resourceId not in allowedResourceIds" };
+    const exists = state.resources.some(r => r.id === resourceId);
+    if (!exists) return { kind: "error", code: "RESOURCE_NOT_FOUND", message: "Unknown resource id" };
+    if (!(amount > 0)) return { kind: "error", code: "INVALID_AMOUNT", message: "amount must be > 0" };
+    grantResource(player, resourceId, amount);
     return { kind: "ok" };
   },
 };
@@ -138,4 +150,9 @@ export const takeFromOpponent: MechanicSpec = {
 Registering
 - Add your mechanic to the list in `lib/mechanics/builtin.ts` or import/register it in `lib/mechanics/index.ts`.
 - Effects reference mechanics by `effect.type` and pass `effect.payload` to `apply`.
+
+Additional built-in examples
+- convert — `{ fromResourceId, toResourceId, rate, times? }`
+- chooseGainResource — `{ amount, allowedResourceIds? }`
+- harvestByPresence — `{ resourceId, perWorker, spaceIds? }`
 

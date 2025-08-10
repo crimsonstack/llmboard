@@ -187,6 +187,54 @@ export default function BoardPage() {
                 <h2 className="font-semibold">{space.name}</h2>
                 <p className="text-sm text-gray-600 mb-1">{space.description}</p>
                 <p>Capacity: {workersPlaced}/{space.capacity}</p>
+                {/* Effect summary and badges */}
+                {(() => {
+                  const effect: any = (space as any).effect || {};
+                  const t = effect?.type;
+                  const payload = effect?.payload || {};
+                  const findRes = (id: string) => gameState.resources.find(r => r.id === id)?.name || id;
+                  const interactiveTypes = ["interactive", "chooseResourceFromPlayer", "chooseGainResource"];
+                  const isChoice = t === "chooseGainResource" && (!Array.isArray(payload.allowedResourceIds) || payload.allowedResourceIds.length !== 1);
+                  const isInteractiveSpace = interactiveTypes.includes(t);
+                  function summary() {
+                    switch (t) {
+                      case "gain":
+                        return `Gain ${payload.amount ?? 1} ${findRes(payload.resourceId || "resource")}`;
+                      case "convert":
+                        return `Convert ${payload.rate ?? 1} ${findRes(payload.fromResourceId || "")} → 1 ${findRes(payload.toResourceId || "")}`;
+                      case "chooseGainResource": {
+                        const allowed = Array.isArray(payload.allowedResourceIds) ? payload.allowedResourceIds.map(findRes).join(" or ") : "any resource";
+                        return `Gain ${payload.amount ?? 1} of your choice (${allowed})`;
+                      }
+                      case "harvestByPresence":
+                        return `Gain ${payload.perWorker ?? 1} ${findRes(payload.resourceId || "")} per worker placed`;
+                      case "interactive":
+                        return payload?.description ? `Interactive: ${payload.description}` : "Interactive action";
+                      case "chooseResourceFromPlayer":
+                        return `Another player gives you ${payload.amount ?? 1} of a chosen resource`;
+                      default:
+                        return t ? `Effect: ${t}` : "";
+                    }
+                  }
+                  return (
+                    <div className="mt-2 text-xs text-gray-700 flex flex-wrap items-center gap-2">
+                      {isInteractiveSpace && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 border border-yellow-200">
+                          <span aria-hidden>🔔</span>
+                          Interactive
+                        </span>
+                      )}
+                      {isChoice && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
+                          <span aria-hidden>🗳️</span>
+                          Choice
+                        </span>
+                      )}
+                      <span className="text-gray-600">{summary()}</span>
+                    </div>
+                  );
+                })()}
+
                 <div className="mt-1 text-xs text-gray-700">
                   <div className="font-semibold">Placed by:</div>
                   <ul className="list-disc ml-4">
@@ -267,7 +315,7 @@ export default function BoardPage() {
                 return `Action: ${t}. From ${fromP} -> ${toP}${desc}`;
               })()}
             </div>
-            {pending!.data?.type === "chooseResourceFromPlayer" && (
+            {pending!.mechanicId === "chooseResourceFromPlayer" && (
               <div className="space-y-2">
                 <div className="text-sm text-gray-700">
                   {isResponder ? (
@@ -333,6 +381,73 @@ export default function BoardPage() {
                           if (payload?.state) setGameState(payload.state);
                           setSelectedResourceId("");
                           setTransferAmount(1);
+                        } catch (err) {
+                          console.error("Network error responding to action:", err);
+                        } finally {
+                          setResponding(false);
+                        }
+                      }}
+                      className="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+                    >
+                      Submit Choice
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {pending!.mechanicId === "chooseGainResource" && (
+              <div className="space-y-2">
+                <div className="text-sm text-gray-700">
+                  {isResponder ? (
+                    <span>Choose a resource to gain.</span>
+                  ) : (
+                    <span>Waiting for {responder?.name || responderId} to choose a resource to gain.</span>
+                  )}
+                </div>
+                {isResponder && (
+                  <>
+                    <label className="block text-sm">Choose resource</label>
+                    <select
+                      className="border p-1 rounded w-full"
+                      value={selectedResourceId}
+                      onChange={(e) => setSelectedResourceId(e.target.value)}
+                    >
+                      <option value="">-- Select --</option>
+                      {gameState.resources
+                        .filter(r => {
+                          const allowed = pending!.data?.allowedResourceIds as string[] | undefined;
+                          return !allowed || allowed.includes(r.id);
+                        })
+                        .map(r => (
+                          <option key={r.id} value={r.id}>{r.name}</option>
+                        ))}
+                    </select>
+                    <div className="text-xs text-gray-600">Amount: {pending!.data?.amount ?? 1}</div>
+                    <button
+                      disabled={!selectedResourceId || responding}
+                      onClick={async () => {
+                        if (!selectedResourceId) return;
+                        setResponding(true);
+                        try {
+                          const res = await fetch("/api/game/respondAction", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              roomId: new URLSearchParams(window.location.search).get('roomId') || 'default',
+                              playerId: currentPlayerId,
+                              actionId: pending!.effectId,
+                              choice: { resourceId: selectedResourceId }
+                            })
+                          });
+                          const payload = await res.json();
+                          if (!res.ok) {
+                            console.error("Respond action error:", payload);
+                            if (payload?.state) setGameState(payload.state);
+                            return;
+                          }
+                          if (payload?.state) setGameState(payload.state);
+                          setSelectedResourceId("");
                         } catch (err) {
                           console.error("Network error responding to action:", err);
                         } finally {

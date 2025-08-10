@@ -42,6 +42,36 @@
         "payload": { "action": "chooseResourceFromPlayer" },
         "description": "Request a resource from another player"
       }
+    },
+    {
+      "id": "b4",
+      "name": "Workshop Exchange",
+      "description": "Convert 2 Ironwood into 1 Moonstone",
+      "capacity": 2,
+      "effect": {
+        "type": "convert",
+        "payload": { "fromResourceId": "r2", "toResourceId": "r1", "rate": 2 }
+      }
+    },
+    {
+      "id": "b5",
+      "name": "Market Choice",
+      "description": "Gain 2 of your choice (Moonstone or Ironwood)",
+      "capacity": 1,
+      "effect": {
+        "type": "chooseGainResource",
+        "payload": { "amount": 2, "allowedResourceIds": ["r1", "r2"] }
+      }
+    },
+    {
+      "id": "b6",
+      "name": "Harvest Camp",
+      "description": "Gain 1 Ironwood per worker you have placed",
+      "capacity": 2,
+      "effect": {
+        "type": "harvestByPresence",
+        "payload": { "resourceId": "r2", "perWorker": 1 }
+      }
     }
   ]
 }
